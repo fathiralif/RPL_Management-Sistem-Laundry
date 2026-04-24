@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <radialGradient id="bubbleGrad1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#2563EB;stop-opacity:0.15"/>
+      <stop offset="100%" style="stop-color:#2563EB;stop-opacity:0"/>
+    </radialGradient>
+    <radialGradient id="bubbleGrad2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:0.12"/>
+      <stop offset="100%" style="stop-color:#06B6D4;stop-opacity:0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="100" cy="100" r="80" fill="url(#bubbleGrad1)"/>
+  <circle cx="140" cy="60" r="40" fill="url(#bubbleGrad2)"/>
+  <circle cx="60" cy="150" r="30" fill="url(#bubbleGrad1)"/>
+  <!-- dot grid -->
+  <g fill="#2563EB" opacity="0.08">
+    <circle cx="20" cy="20" r="3"/><circle cx="40" cy="20" r="3"/><circle cx="60" cy="20" r="3"/>
+    <circle cx="20" cy="40" r="3"/><circle cx="40" cy="40" r="3"/><circle cx="60" cy="40" r="3"/>
+    <circle cx="140" cy="160" r="3"/><circle cx="160" cy="160" r="3"/><circle cx="180" cy="160" r="3"/>
+    <circle cx="140" cy="180" r="3"/><circle cx="160" cy="180" r="3"/><circle cx="180" cy="180" r="3"/>
+  </g>
+</svg>

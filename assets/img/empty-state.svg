@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 160" width="200" height="160">
+  <!-- background circle -->
+  <circle cx="100" cy="80" r="60" fill="#F1F5F9"/>
+  <!-- folder or box shape -->
+  <rect x="55" y="65" width="90" height="60" rx="8" fill="#E2E8F0"/>
+  <path d="M55 75 Q55 65 65 65 H95 L103 73 H135 Q145 73 145 83 V125 Q145 125 135 125 H65 Q55 125 55 115 Z" fill="#CBD5E1"/>
+  <!-- lines inside -->
+  <rect x="70" y="85" width="60" height="4" rx="2" fill="#94A3B8"/>
+  <rect x="70" y="97" width="45" height="4" rx="2" fill="#94A3B8"/>
+  <rect x="70" y="109" width="30" height="4" rx="2" fill="#94A3B8"/>
+  <!-- sparkles -->
+  <circle cx="40" cy="45" r="3" fill="#BFDBFE"/>
+  <circle cx="160" cy="50" r="4" fill="#A5F3FC"/>
+  <circle cx="155" cy="120" r="2.5" fill="#BFDBFE"/>
+</svg>
