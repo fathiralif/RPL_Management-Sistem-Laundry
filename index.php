@@ -63,7 +63,6 @@ nav {
     padding: 72px 5% 0;
     background: linear-gradient(135deg, #F0F7FF 0%, #EFF6FF 40%, #F0FDF4 100%);
     position: relative; overflow: hidden;
-    .mobile-menu.open { display: flex; }
 }
 .hero-bg {
     position: absolute; inset: 0;
