@@ -47,7 +47,7 @@ nav {
 .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
 .btn-lg { padding: 14px 32px; font-size: 16px; border-radius: 12px; }
 .btn-orange { background: var(--orange); color: white; }
-.btn-orange:hover { background: #EA6C0A; transform: translateY(-1px); }
+
 
 /* HAMBURGER */
 .hamburger { display: none; flex-direction: column; gap: 5px; background: none; border: none; cursor: pointer; padding: 6px; }
