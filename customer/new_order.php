@@ -488,3 +488,9 @@ function toggleDelivery(type){
 
 function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sidebarOverlay').classList.add('open');}
 function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');}
+
+// Init dengan 1 item default
+addItem('reguler');
+</script>
+</body>
+</html>
