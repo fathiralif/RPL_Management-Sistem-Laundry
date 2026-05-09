@@ -125,3 +125,6 @@ CREATE TABLE IF NOT EXISTS order_items (
 INSERT INTO order_items (order_id, cloth_type, weight, note) VALUES
 (1, 'katun', 1.5, NULL),
 (1, 'jas', 1.0, 'Jangan diperas'),
+(3, 'reguler', 1.0, NULL),
+(7, 'jeans', 2.0, NULL),
+(7, 'sutra', 1.0, 'Cuci dengan lembut');
