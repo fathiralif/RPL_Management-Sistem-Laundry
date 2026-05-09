@@ -120,3 +120,8 @@ CREATE TABLE IF NOT EXISTS order_items (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 );
+
+-- Contoh data order_items
+INSERT INTO order_items (order_id, cloth_type, weight, note) VALUES
+(1, 'katun', 1.5, NULL),
+(1, 'jas', 1.0, 'Jangan diperas'),
