@@ -106,3 +106,14 @@ INSERT INTO notifications (user_id, title, message) VALUES
 (4, 'Pembayaran Berhasil', 'Pembayaran untuk ORD-02002 sebesar Rp30.000 berhasil.'),
 (1, 'Pesanan Baru', 'Ada pesanan baru dari John Mith - ORD-02001'),
 (2, 'Tugas Baru', 'Anda ditugaskan untuk menangani pesanan ORD-02001');
+
+
+-- =============================================
+-- UPDATE: Tambah tabel order_items untuk multi-item checkout
+-- =============================================
+CREATE TABLE IF NOT EXISTS order_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id INT NOT NULL,
+    cloth_type ENUM('reguler','katun','jas','sutra','jeans','batik','wool','lainnya') NOT NULL DEFAULT 'reguler',
+    weight DECIMAL(5,2) NOT NULL DEFAULT 1.00,
+    note TEXT,
