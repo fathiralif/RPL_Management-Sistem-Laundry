@@ -65,7 +65,12 @@ $activeCustomers = $db->query("SELECT COUNT(DISTINCT user_id) as c FROM orders W
                 <div class="topbar-title">Pelanggan</div>
             </div>
             <div class="topbar-right">
-                <button class="notif-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></button>
+                <button class="notif-btn" onclick="window.location='notifications.php'">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <?php if (getUnreadNotifs($user['id']) > 0): ?>
+                    <span class="notif-dot"></span>
+                    <?php endif; ?>
+                </button>
                 <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;background:var(--gray-100)">
                     <div class="avatar avatar-sm"><?= strtoupper(substr($user['name'],0,1)) ?></div>
                     <span style="font-size:13px;font-weight:600"><?= htmlspecialchars(explode(' ',$user['name'])[0]) ?></span>

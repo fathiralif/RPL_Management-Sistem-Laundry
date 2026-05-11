@@ -46,38 +46,63 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
     if ($action === 'update_status') {
         $oid         = (int)$_POST['order_id'];
-        $status      = $_POST['status'];
+        $status      = $_POST['status'] ?? '';
         $driverName  = $db->real_escape_string(trim($_POST['driver_name']  ?? ''));
         $driverPhone = $db->real_escape_string(trim($_POST['driver_phone'] ?? ''));
 
-        $driverSet = '';
-        if ($driverName)  $driverSet .= ", driver_name='$driverName'";
-        if ($driverPhone) $driverSet .= ", driver_phone='$driverPhone'";
+        // Validasi: hanya boleh status yang valid sesuai ENUM di DB
+        $allowedStatuses = ['pending','washing','drying','ironing','ready_pickup','ready_deliver','done','cancelled'];
+        if (!in_array($status, $allowedStatuses)) {
+            $msg = 'Status tidak valid!'; $msgType = 'danger';
+        } else {
+            // Validasi: ready_pickup hanya boleh untuk delivery_type='pickup',
+            //           ready_deliver hanya boleh untuk delivery_type='delivery'
+            $orderRow = $db->query("SELECT delivery_type FROM orders WHERE id=$oid")->fetch_assoc();
+            $delivType = $orderRow['delivery_type'] ?? 'pickup';
+            if ($status === 'ready_pickup' && $delivType === 'delivery') {
+                $msg = 'Pesanan ini bertipe DIANTAR — gunakan status "Siap Diantar", bukan "Siap Diambil".';
+                $msgType = 'danger';
+                goto end_update_status;
+            }
+            if ($status === 'ready_deliver' && $delivType === 'pickup') {
+                $msg = 'Pesanan ini bertipe AMBIL SENDIRI — gunakan status "Siap Diambil", bukan "Siap Diantar".';
+                $msgType = 'danger';
+                goto end_update_status;
+            }
+            $driverSet = '';
+            if ($driverName)  $driverSet .= ", driver_name='$driverName'";
+            if ($driverPhone) $driverSet .= ", driver_phone='$driverPhone'";
 
-        $db->query("UPDATE orders SET status='$status'$driverSet WHERE id=$oid");
-
-        // Notifikasi ke customer berdasarkan status baru
-        $order = $db->query("SELECT o.*,u.id as cust_id,u.name as cust_name FROM orders o JOIN users u ON o.user_id=u.id WHERE o.id=$oid")->fetch_assoc();
-        if ($order) {
-            $cid   = (int)$order['cust_id'];
-            $ocode = $db->real_escape_string($order['order_code']);
-            $cname = $db->real_escape_string($order['cust_name']);
-            $notifs = [
-                'washing'       => ['🧼 Pakaian Sedang Dicuci',     "Halo $cname! Pesanan <b>$ocode</b> Anda sedang dalam proses pencucian."],
-                'drying'        => ['💨 Pakaian Sedang Dikeringkan', "Halo $cname! Pesanan <b>$ocode</b> Anda sedang dikeringkan."],
-                'ironing'       => ['🔥 Pakaian Sedang Disetrika',   "Halo $cname! Pesanan <b>$ocode</b> Anda sedang disetrika/gosok."],
-                'ready_pickup'  => ['✅ Pakaian Siap Diambil!',      "Halo $cname! Pesanan <b>$ocode</b> sudah siap. Silakan datang ke laundry kami. 🧺"],
-                'ready_deliver' => ['🚚 Pakaian Siap Diantar!',      "Halo $cname! Pesanan <b>$ocode</b> sedang dalam perjalanan ke alamat Anda."],
-                'done'          => ['🎉 Pesanan Selesai!',           "Halo $cname! Pesanan <b>$ocode</b> telah selesai. Terima kasih mempercayai WashWell! 😊"],
-            ];
-            if (isset($notifs[$status])) {
-                [$title, $message] = $notifs[$status];
-                $title   = $db->real_escape_string($title);
-                $message = $db->real_escape_string($message);
-                $db->query("INSERT INTO notifications (user_id,title,message) VALUES ($cid,'$title','$message')");
+            $res = $db->query("UPDATE orders SET status='$status'$driverSet WHERE id=$oid");
+            if (!$res) {
+                $msg = 'Gagal memperbarui status: ' . $db->error; $msgType = 'danger';
+            } else {
+                // Notifikasi ke customer berdasarkan status baru
+                $order = $db->query("SELECT o.*,u.id as cust_id,u.name as cust_name FROM orders o JOIN users u ON o.user_id=u.id WHERE o.id=$oid")->fetch_assoc();
+                if ($order) {
+                    $cid   = (int)$order['cust_id'];
+                    $ocode = $db->real_escape_string($order['order_code']);
+                    $cname = $db->real_escape_string($order['cust_name']);
+                    $notifs = [
+                        'washing'       => ['🧼 Pakaian Sedang Dicuci',     "Halo $cname! Pesanan <b>$ocode</b> Anda sedang dalam proses pencucian."],
+                        'drying'        => ['💨 Pakaian Sedang Dikeringkan', "Halo $cname! Pesanan <b>$ocode</b> Anda sedang dikeringkan."],
+                        'ironing'       => ['🔥 Pakaian Sedang Disetrika',   "Halo $cname! Pesanan <b>$ocode</b> Anda sedang disetrika/gosok."],
+                        'ready_pickup'  => ['✅ Pakaian Siap Diambil!',      "Halo $cname! Pesanan <b>$ocode</b> sudah siap. Silakan datang ke laundry kami. 🧺"],
+                        'ready_deliver' => ['🚚 Pakaian Siap Diantar!',      "Halo $cname! Pesanan <b>$ocode</b> sedang dalam perjalanan ke alamat Anda."],
+                        'done'          => ['🎉 Pesanan Selesai!',           "Halo $cname! Pesanan <b>$ocode</b> telah selesai. Terima kasih mempercayai WashWell! 😊"],
+                        'cancelled'     => ['❌ Pesanan Dibatalkan',         "Halo $cname! Pesanan <b>$ocode</b> telah dibatalkan."],
+                    ];
+                    if (isset($notifs[$status])) {
+                        [$title, $message] = $notifs[$status];
+                        $title   = $db->real_escape_string($title);
+                        $message = $db->real_escape_string($message);
+                        $db->query("INSERT INTO notifications (user_id,title,message) VALUES ($cid,'$title','$message')");
+                    }
+                }
+                $msg='Status berhasil diperbarui!'; $msgType='success';
             }
         }
-        $msg='Status berhasil diperbarui!'; $msgType='success';
+        end_update_status:;
     }
 
     if ($action === 'delete') {
@@ -287,7 +312,7 @@ $nominalUnpaid  = $db->query("SELECT COALESCE(SUM(amount),0) as s FROM orders WH
                             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
                                 <span class="badge badge-<?= $item['status'] ?>"><?= $statusLabels[$item['status']] ?? $item['status'] ?></span>
                                 <?php if (!in_array($item['status'], $finalStatuses)): ?>
-                                <button onclick="openUpdate(<?= $item['id'] ?>,'<?= $item['status'] ?>','<?= htmlspecialchars($item['customer_name']) ?>','<?= htmlspecialchars($item['order_code']) ?>')" class="btn btn-sm" style="font-size:11px;padding:3px 10px;background:#EFF6FF;color:#2563EB;border:1px solid #BFDBFE;">
+                                <button onclick="openUpdate(<?= $item['id'] ?>,'<?= $item['status'] ?>','<?= htmlspecialchars($item['customer_name']) ?>','<?= htmlspecialchars($item['order_code']) ?>','<?= $item['delivery_type'] ?? 'pickup' ?>')" class="btn btn-sm" style="font-size:11px;padding:3px 10px;background:#EFF6FF;color:#2563EB;border:1px solid #BFDBFE;">
                                     Update Status
                                 </button>
                                 <?php else: ?>
@@ -442,7 +467,7 @@ $nominalUnpaid  = $db->query("SELECT COALESCE(SUM(amount),0) as s FROM orders WH
                                         <div style="display:flex;gap:6px;align-items:center;">
                                             <?php if (!$isFinal): ?>
                                             <!-- Tombol Update: HANYA muncul jika belum final -->
-                                            <button onclick="openUpdate(<?= $o['id'] ?>,'<?= $o['status'] ?>','<?= htmlspecialchars($o['customer_name']) ?>','<?= htmlspecialchars($o['order_code']) ?>')" class="btn btn-primary btn-sm">
+                                            <button onclick="openUpdate(<?= $o['id'] ?>,'<?= $o['status'] ?>','<?= htmlspecialchars($o['customer_name']) ?>','<?= htmlspecialchars($o['order_code']) ?>','<?= $o['delivery_type'] ?? 'pickup' ?>')" class="btn btn-primary btn-sm">
                                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
                                                 Update
                                             </button>
@@ -583,6 +608,7 @@ $nominalUnpaid  = $db->query("SELECT COALESCE(SUM(amount),0) as s FROM orders WH
                     <div style="font-size:11px;color:var(--gray-500);margin-bottom:2px;">Pesanan</div>
                     <div style="font-weight:700;color:var(--primary);font-size:15px;" id="updateOrderCode"></div>
                     <div style="font-size:12px;color:var(--gray-600);" id="updateCustomerName"></div>
+                    <div style="margin-top:8px;" id="deliveryTypeBadge"></div>
                 </div>
 
                 <div class="form-group">
@@ -653,10 +679,31 @@ $nominalUnpaid  = $db->query("SELECT COALESCE(SUM(amount),0) as s FROM orders WH
 function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sidebarOverlay').classList.add('open');}
 function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');}
 
-function openUpdate(id, status, customerName, orderCode) {
+function openUpdate(id, status, customerName, orderCode, deliveryType) {
+    deliveryType = deliveryType || 'pickup'; // default pickup
     document.getElementById('updateOrderId').value = id;
     document.getElementById('updateOrderCode').textContent = orderCode;
     document.getElementById('updateCustomerName').textContent = '👤 ' + customerName;
+
+    // Tampilkan badge tipe pengiriman
+    const badge = document.getElementById('deliveryTypeBadge');
+    if (deliveryType === 'delivery') {
+        badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:5px;background:#CFFAFE;color:#0E7490;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid #A5F3FC;">🚚 Tipe: DIANTAR — hanya bisa Siap Diantar</span>';
+    } else {
+        badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:5px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid #BBF7D0;">🏃 Tipe: AMBIL SENDIRI — hanya bisa Siap Diambil</span>';
+    }
+
+    // Sembunyikan status yang tidak relevan dengan delivery_type
+    document.querySelectorAll('.status-radio').forEach(r => {
+        const label = r.closest('label');
+        if (r.value === 'ready_pickup' && deliveryType === 'delivery') {
+            label.style.display = 'none'; // Sembunyikan "Siap Diambil" untuk pesanan diantar
+        } else if (r.value === 'ready_deliver' && deliveryType === 'pickup') {
+            label.style.display = 'none'; // Sembunyikan "Siap Diantar" untuk pesanan ambil sendiri
+        } else {
+            label.style.display = '';    // Tampilkan yang lain
+        }
+    });
 
     // Reset driver fields
     document.querySelector('input[name="driver_name"]').value = '';

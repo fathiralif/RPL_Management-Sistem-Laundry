@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     transaction_code VARCHAR(30) UNIQUE NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     payment_method ENUM('cash','transfer','e-wallet','cod') DEFAULT 'cash',
+    status ENUM('pending','success','failed') DEFAULT 'success',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (order_id) REFERENCES orders(id)
 );
@@ -159,3 +160,16 @@ INSERT INTO notifications (user_id, title, message, created_at) VALUES
 (1, '💳 Pembayaran Diterima', 'Sari Dewi telah membayar via Transfer Bank untuk pesanan ORD-02002 sebesar Rp30.000. Status pesanan sekarang LUNAS.', DATE_SUB(NOW(), INTERVAL 10 DAY)),
 (1, '💳 Pembayaran Diterima', 'John Mith telah membayar via E-Wallet untuk pesanan ORD-02005 sebesar Rp32.000. Status pesanan sekarang LUNAS.', DATE_SUB(NOW(), INTERVAL 7 DAY)),
 (1, '📦 Pesanan Baru', 'Customer Demo membuat pesanan baru ORD-02006 - Dry Cleaning 2kg (Rp50.000)', DATE_SUB(NOW(), INTERVAL 5 DAY));
+
+-- =============================================
+-- PERBAIKAN: Pastikan kolom status orders pakai ENUM baru
+-- Jalankan ini jika DB sudah ada dengan ENUM lama
+-- =============================================
+ALTER TABLE orders MODIFY COLUMN status ENUM('pending','washing','drying','ironing','ready_pickup','ready_deliver','done','cancelled') DEFAULT 'pending';
+-- Konversi data lama jika ada
+UPDATE orders SET status = 'washing'      WHERE status = 'in_progress';
+UPDATE orders SET status = 'ready_pickup' WHERE status = 'ready';
+UPDATE orders SET status = 'done'         WHERE status = 'delivered';
+
+-- Pastikan tabel transactions punya kolom status
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status ENUM('pending','success','failed') DEFAULT 'success';

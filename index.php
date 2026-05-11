@@ -384,7 +384,7 @@ footer {
             ['icon'=>'👔','name'=>'Cuci + Setrika','desc'=>'Lengkap cuci bersih dan setrika rapi, pakaian siap pakai langsung dari laundry.','price'=>'Rp 10.000','unit'=>'/kg'],
             ['icon'=>'✨','name'=>'Dry Cleaning','desc'=>'Dry cleaning profesional untuk pakaian delicate, jas, gaun, dan busana khusus.','price'=>'Rp 25.000','unit'=>'/kg'],
             ['icon'=>'👟','name'=>'Cuci Sepatu','desc'=>'Bersihkan sepatu kesayangan Anda hingga seperti baru. Nyaman dan wangi.','price'=>'Rp 35.000','unit'=>'/pasang'],
-            ['icon'=>'🏠','name'=>'Cuci Karpet','desc'=>'Cuci karpet dan permadani berbagai ukuran dengan hasil bersih dan segar.','price'=>'Rp 15.000','unit'=>'/kg'],
+            ['icon'=>'🏠','name'=>'Cuci Karpet','desc'=>'Cuci karpet dan permadani berbagai ukuran dengan hasil bersih dan segar.','price'=>'Rp 15.000','unit'=>'/pcs'],
         ];
         foreach ($services as $s): ?>
         <div class="service-card">

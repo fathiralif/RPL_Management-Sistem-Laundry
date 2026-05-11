@@ -111,7 +111,9 @@ $notifCount = getUnreadNotifs($uid);
                 2 => ['&#129532;', 'Dicuci'],
                 3 => ['&#128168;', 'Kering'],
                 4 => ['&#128293;', 'Setrika'],
-                5 => ['&#9989;',   'Siap'],
+                5 => ($order['delivery_type'] ?? 'pickup') === 'delivery'
+                     ? ['&#128666;', 'Siap Diantar']
+                     : ['&#9989;',   'Siap Diambil'],
                 6 => ['&#127881;', 'Selesai'],
             ];
             $totalSteps = count($steps);

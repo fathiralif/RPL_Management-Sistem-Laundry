@@ -18,7 +18,16 @@ $recentOrders = $db->query("SELECT o.*, s.name as service_name FROM orders o JOI
 $notifs = $db->query("SELECT * FROM notifications WHERE user_id=$uid AND is_read=0 ORDER BY created_at DESC LIMIT 3");
 $notifCount = getUnreadNotifs($uid);
 
-$statusLabels = ['pending'=>'Menunggu','in_progress'=>'Diproses','ready'=>'Siap Diambil','delivered'=>'Terkirim','cancelled'=>'Dibatalkan'];
+$statusLabels = [
+    'pending'      => 'Menunggu',
+    'in_progress'  => 'Diproses',
+    'washing'      => 'Sedang Dicuci',
+    'drying'       => 'Sedang Dikeringkan',
+    'ready_pickup' => 'Siap Diambil',
+    'ready'        => 'Siap Diambil',
+    'delivered'    => 'Terkirim',
+    'cancelled'    => 'Dibatalkan',
+];
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -136,7 +145,7 @@ $statusLabels = ['pending'=>'Menunggu','in_progress'=>'Diproses','ready'=>'Siap 
                             <tr>
                                 <td><span style="font-weight:700;color:var(--primary)"><?= htmlspecialchars($o['order_code']) ?></span><br><small style="color:var(--gray-400)"><?= date('d M Y',strtotime($o['created_at'])) ?></small></td>
                                 <td><?= htmlspecialchars($o['service_name']) ?><br><small style="color:var(--gray-500)"><?= $o['weight'] ?> kg</small></td>
-                                <td><span class="badge badge-<?= $o['status'] ?>"><?= $statusLabels[$o['status']] ?></span></td>
+                                <td><span class="badge badge-<?= $o['status'] ?>"><?= $statusLabels[$o['status']] ?? ucfirst(str_replace('_',' ',$o['status'])) ?></span></td>
                                 <td><span class="badge badge-<?= $o['payment_status'] ?>"><?= $o['payment_status']==='paid'?'Lunas':'Belum' ?></span></td>
                                 <td><a href="tracking.php?order=<?= $o['order_code'] ?>" class="btn btn-ghost btn-sm">Lacak</a></td>
                             </tr>

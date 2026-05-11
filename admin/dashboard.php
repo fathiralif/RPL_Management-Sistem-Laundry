@@ -5,13 +5,13 @@ $db = getDB();
 $user = getCurrentUser();
 
 // Stats
-$totalOrders = $db->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c'];
+$totalOrders   = $db->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c'];
 $pendingOrders = $db->query("SELECT COUNT(*) as c FROM orders WHERE status='pending'")->fetch_assoc()['c'];
-$inProgress = $db->query("SELECT COUNT(*) as c FROM orders WHERE status='in_progress'")->fetch_assoc()['c'];
-$readyOrders = $db->query("SELECT COUNT(*) as c FROM orders WHERE status='ready'")->fetch_assoc()['c'];
-$delivered = $db->query("SELECT COUNT(*) as c FROM orders WHERE status='delivered'")->fetch_assoc()['c'];
-$totalRevenue = $db->query("SELECT COALESCE(SUM(amount),0) as r FROM transactions WHERE status='success'")->fetch_assoc()['r'];
-$todayRevenue = $db->query("SELECT COALESCE(SUM(t.amount),0) as r FROM transactions t WHERE t.status='success' AND DATE(t.created_at)=CURDATE()")->fetch_assoc()['r'];
+$inProgress    = $db->query("SELECT COUNT(*) as c FROM orders WHERE status IN ('washing','drying','ironing')")->fetch_assoc()['c'];
+$readyOrders   = $db->query("SELECT COUNT(*) as c FROM orders WHERE status IN ('ready_pickup','ready_deliver')")->fetch_assoc()['c'];
+$delivered     = $db->query("SELECT COUNT(*) as c FROM orders WHERE status='done'")->fetch_assoc()['c'];
+$totalRevenue  = $db->query("SELECT COALESCE(SUM(amount),0) as r FROM transactions WHERE status='success'")->fetch_assoc()['r'];
+$todayRevenue  = $db->query("SELECT COALESCE(SUM(t.amount),0) as r FROM transactions t WHERE t.status='success' AND DATE(t.created_at)=CURDATE()")->fetch_assoc()['r'];
 
 // Recent orders
 $recentOrders = $db->query("SELECT o.*, u.name as customer_name, s.name as service_name FROM orders o JOIN users u ON o.user_id=u.id JOIN services s ON o.service_id=s.id ORDER BY o.created_at DESC LIMIT 8");
@@ -84,7 +84,7 @@ $recentOrders = $db->query("SELECT o.*, u.name as customer_name, s.name as servi
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     </div>
                     <div class="stat-count"><?= $pendingOrders ?></div>
-                    <div class="stat-label">Pending</div>
+                    <div class="stat-label">Menunggu</div>
                     <div class="stat-action"><a href="orders.php?status=pending" class="btn btn-primary btn-sm">Kelola</a></div>
                 </div>
                 <div class="stat-card stat-teal">
@@ -93,7 +93,7 @@ $recentOrders = $db->query("SELECT o.*, u.name as customer_name, s.name as servi
                     </div>
                     <div class="stat-count"><?= $inProgress ?></div>
                     <div class="stat-label">Diproses</div>
-                    <div class="stat-action"><a href="orders.php?status=in_progress" class="btn btn-sm" style="background:var(--teal);color:white">Kelola</a></div>
+                    <div class="stat-action"><a href="orders.php?status=washing" class="btn btn-sm" style="background:var(--teal);color:white">Kelola</a></div>
                 </div>
                 <div class="stat-card stat-green">
                     <div class="stat-card-icon">
@@ -101,15 +101,15 @@ $recentOrders = $db->query("SELECT o.*, u.name as customer_name, s.name as servi
                     </div>
                     <div class="stat-count"><?= $readyOrders ?></div>
                     <div class="stat-label">Siap Diambil</div>
-                    <div class="stat-action"><a href="orders.php?status=ready" class="btn btn-green btn-sm">Kelola</a></div>
+                    <div class="stat-action"><a href="orders.php?status=ready_pickup" class="btn btn-green btn-sm">Kelola</a></div>
                 </div>
                 <div class="stat-card stat-gray">
                     <div class="stat-card-icon">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
                     </div>
                     <div class="stat-count"><?= $delivered ?></div>
-                    <div class="stat-label">Terkirim</div>
-                    <div class="stat-action"><a href="orders.php?status=delivered" class="btn btn-ghost btn-sm">Lihat</a></div>
+                    <div class="stat-label">Selesai</div>
+                    <div class="stat-action"><a href="orders.php?status=done" class="btn btn-ghost btn-sm">Lihat</a></div>
                 </div>
             </div>
 
@@ -181,7 +181,16 @@ $recentOrders = $db->query("SELECT o.*, u.name as customer_name, s.name as servi
                                     <td>
                                         <span class="badge badge-<?= $o['status'] ?>">
                                             <?php
-                                            $labels = ['pending'=>'Pending','in_progress'=>'Diproses','ready'=>'Siap','delivered'=>'Terkirim','cancelled'=>'Dibatalkan'];
+                                            $labels = [
+                                                'pending'       => 'Menunggu',
+                                                'washing'       => 'Sedang Dicuci',
+                                                'drying'        => 'Pengeringan',
+                                                'ironing'       => 'Setrika',
+                                                'ready_pickup'  => 'Siap Diambil',
+                                                'ready_deliver' => 'Siap Diantar',
+                                                'done'          => 'Selesai',
+                                                'cancelled'     => 'Dibatalkan',
+                                            ];
                                             echo $labels[$o['status']] ?? $o['status'];
                                             ?>
                                         </span>
@@ -191,7 +200,7 @@ $recentOrders = $db->query("SELECT o.*, u.name as customer_name, s.name as servi
                                     <td>
                                         <div style="display:flex;gap:6px;">
                                             <a href="order-detail.php?id=<?= $o['id'] ?>" class="btn btn-primary btn-sm">Detail</a>
-                                            <a href="orders.php?action=update&id=<?= $o['id'] ?>" class="btn btn-ghost btn-sm">Update</a>
+                                            <a href="orders.php" class="btn btn-ghost btn-sm">Update</a>
                                         </div>
                                     </td>
                                 </tr>
