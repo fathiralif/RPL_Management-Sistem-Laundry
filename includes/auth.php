@@ -39,14 +39,6 @@ function requireAdmin($redirect = '../index.php') {
     }
 }
 
-function requireAdminOrStaff($redirect = '../index.php') {
-    requireLogin($redirect);
-    $user = getCurrentUser();
-    if (!$user || !in_array($user['role'], ['admin','staff'])) {
-        header("Location: $redirect");
-        exit;
-    }
-}
 
 function logout() {
     session_destroy();

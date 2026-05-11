@@ -2,7 +2,7 @@
 require_once '../includes/auth.php';
 if (isLoggedIn()) {
     $user = getCurrentUser();
-    if ($user && in_array($user['role'], ['admin','staff'])) {
+    if ($user && $user['role'] === 'admin') {
         header('Location: ../admin/dashboard.php'); exit;
     }
     header('Location: ../customer/dashboard.php'); exit;
@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($user && password_verify($password, $user['password'])) {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['user_role'] = $user['role'];
-            if (in_array($user['role'], ['admin','staff'])) {
+            if ($user['role'] === 'admin') {
                 header('Location: ../admin/dashboard.php'); exit;
             }
             header('Location: ../customer/dashboard.php'); exit;
@@ -157,11 +157,6 @@ body{font-family:var(--font);background:linear-gradient(135deg,#EFF6FF 0%,#F0F9F
                 <span class="demo-label">👑 Admin</span>
                 <span class="demo-cred">admin@washwell.com</span>
                 <button class="demo-fill" onclick="fillDemo('admin@washwell.com')">Isi</button>
-            </div>
-            <div class="demo-item">
-                <span class="demo-label">🧑‍💼 Staff</span>
-                <span class="demo-cred">staff@washwell.com</span>
-                <button class="demo-fill" onclick="fillDemo('staff@washwell.com')">Isi</button>
             </div>
             <div class="demo-item">
                 <span class="demo-label">👤 Customer</span>

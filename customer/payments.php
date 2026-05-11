@@ -19,25 +19,33 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='pay') {
     } else {
         $order = $db->query("SELECT o.*,s.name as service_name FROM orders o JOIN services s ON o.service_id=s.id WHERE o.id=$oid AND o.user_id=$uid AND o.payment_status='unpaid'")->fetch_assoc();
         if ($order) {
-            $trxCode = generateTrxCode();
-            $stmt = $db->prepare("INSERT INTO transactions (order_id,transaction_code,amount,payment_method,status) VALUES (?,?,?,?,'pending')");
-            $stmt->bind_param('isds', $oid, $trxCode, $order['amount'], $method);
-            if ($stmt->execute()) {
-                $db->query("UPDATE orders SET payment_method='".addslashes($method)."' WHERE id=$oid AND user_id=$uid");
-
-                // Notif ke customer: konfirmasi menunggu verifikasi
-                $amtFmt = formatRupiah($order['amount']);
-                $payLabel = $method === 'e-wallet' ? 'E-Wallet' : 'Transfer Bank';
-                $db->query("INSERT INTO notifications (user_id,title,message) VALUES ($uid,'⏳ Konfirmasi Pembayaran Dikirim','Bukti pembayaran untuk pesanan ".$order['order_code']." sebesar $amtFmt via $payLabel sedang kami verifikasi. Terima kasih telah bertransaksi di WashWell! Staff kami akan segera mengkonfirmasi.')");
-
-                // Notif ke admin untuk verifikasi
-                $custName = $db->real_escape_string($user['name']);
-                $db->query("INSERT INTO notifications (user_id,title,message) VALUES (1,'💳 Bukti Pembayaran Masuk','$custName mengirim bukti pembayaran $payLabel untuk pesanan ".$order['order_code']." - $amtFmt. Mohon diverifikasi.')");
-
-                $msg = "Konfirmasi pembayaran <strong>".$order['order_code']."</strong> via <strong>$payLabel</strong> berhasil dikirim! Staff kami akan memverifikasi segera. Kode transaksi: <strong>$trxCode</strong>";
-                $msgType = 'success';
+            // Cek apakah sudah ada transaksi pending untuk order ini (cegah duplicate)
+            $existTrx = $db->query("SELECT id FROM transactions WHERE order_id=$oid AND status IN ('success','pending') LIMIT 1")->fetch_assoc();
+            if ($existTrx) {
+                $msg = 'Pesanan ini sudah memiliki konfirmasi pembayaran yang sedang diproses. Hubungi staff jika ada masalah.';
+                $msgType = 'warning';
             } else {
-                $msg = 'Gagal memproses. Silakan coba lagi.'; $msgType = 'danger';
+                // Generate kode unik dengan microsecond + random
+                $trxCode = 'TRX-' . date('YmdHis') . sprintf('%04d', rand(1000,9999));
+                $stmt = $db->prepare("INSERT INTO transactions (order_id,transaction_code,amount,payment_method,status) VALUES (?,?,?,?,'pending')");
+                $stmt->bind_param('isds', $oid, $trxCode, $order['amount'], $method);
+                if ($stmt->execute()) {
+                    $amtFmt   = formatRupiah($order['amount']);
+                    $ocode    = $db->real_escape_string($order['order_code']);
+                    $payLabel = $method === 'e-wallet' ? 'E-Wallet' : 'Transfer Bank';
+
+                    // Notif ke customer
+                    $db->query("INSERT INTO notifications (user_id,title,message) VALUES ($uid,'⏳ Konfirmasi Pembayaran Terkirim','Konfirmasi pembayaran pesanan <b>$ocode</b> sebesar <b>$amtFmt</b> via $payLabel telah dikirim. Menunggu verifikasi admin. Kode transaksi: <b>$trxCode</b>.')");
+
+                    // Notif ke admin (user_id=1)
+                    $custName = $db->real_escape_string($user['name']);
+                    $db->query("INSERT INTO notifications (user_id,title,message) VALUES (1,'💳 Konfirmasi Pembayaran Masuk','$custName mengkonfirmasi pembayaran via $payLabel untuk pesanan <b>$ocode</b> sebesar <b>$amtFmt</b>. Kode transaksi: <b>$trxCode</b>. Segera verifikasi!')");
+
+                    $msg = "Konfirmasi pembayaran pesanan <strong>".$order['order_code']."</strong> sebesar <strong>$amtFmt</strong> via <strong>$payLabel</strong> berhasil dikirim! Menunggu verifikasi admin. Kode transaksi: <strong>$trxCode</strong>";
+                    $msgType = 'success';
+                } else {
+                    $msg = 'Gagal memproses. Silakan coba lagi.'; $msgType = 'danger';
+                }
             }
         } else {
             $msg = 'Pesanan tidak ditemukan atau sudah dibayar.'; $msgType = 'danger';
@@ -51,7 +59,19 @@ if (isset($_GET['order_id'])) {
 }
 
 $unpaidOrders = $db->query("SELECT o.*,s.name as service_name FROM orders o JOIN services s ON o.service_id=s.id WHERE o.user_id=$uid AND o.payment_status='unpaid' AND o.status!='cancelled' ORDER BY o.created_at DESC");
-$transactions = $db->query("SELECT t.*,o.order_code,s.name as service_name FROM transactions t JOIN orders o ON t.order_id=o.id JOIN services s ON o.service_id=s.id WHERE o.user_id=$uid ORDER BY t.created_at DESC LIMIT 20");
+// Ambil riwayat transaksi — 1 transaksi terbaru per order (cegah duplikat tampil)
+$transactions = $db->query("
+    SELECT t.*, o.order_code, s.name as service_name
+    FROM transactions t
+    JOIN orders o ON t.order_id = o.id
+    JOIN services s ON o.service_id = s.id
+    WHERE o.user_id = $uid
+      AND t.id = (
+          SELECT MAX(t2.id) FROM transactions t2 WHERE t2.order_id = t.order_id
+      )
+    ORDER BY t.created_at DESC
+    LIMIT 20
+");
 
 $notifCount = getUnreadNotifs($uid);
 ?>
@@ -85,7 +105,17 @@ $notifCount = getUnreadNotifs($uid);
         <main class="page-content">
 
             <?php if ($msg): ?>
-            <div class="alert alert-<?= $msgType ?>"><?= $msgType==='success'?'✅':($msgType==='warning'?'💡':'⚠️') ?> <?= $msg ?></div>
+            <?php if ($msgType === 'success'): ?>
+            <div style="background:linear-gradient(135deg,var(--green-light),#BBF7D0);border:2px solid #86EFAC;border-radius:16px;padding:20px 24px;margin-bottom:20px;display:flex;align-items:flex-start;gap:16px;">
+                <div style="width:48px;height:48px;background:var(--green);border-radius:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px;">💰</div>
+                <div style="flex:1;">
+                    <div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:800;color:#166534;margin-bottom:4px;">Pembayaran Berhasil Dikirim!</div>
+                    <div style="font-size:13px;color:#15803D;line-height:1.5;"><?= $msg ?></div>
+                </div>
+            </div>
+            <?php else: ?>
+            <div class="alert alert-<?= $msgType ?>"><?= $msgType==='warning'?'💡':'⚠️' ?> <?= $msg ?></div>
+            <?php endif; ?>
             <?php endif; ?>
 
             <!-- Info Banner: Cash ke Staff -->
@@ -123,7 +153,7 @@ $notifCount = getUnreadNotifs($uid);
                                     <div style="font-size:12px;color:var(--gray-500);"><?= htmlspecialchars($o['service_name']) ?> · <?= $o['weight'] ?> kg</div>
                                     <div style="font-size:11px;color:var(--gray-400);margin-top:2px;"><?= $o['payment_method']==='transfer'?'🏦 Transfer Bank':'📱 E-Wallet' ?></div>
                                 </div>
-                                <span class="badge badge-<?= $o['status'] ?>"><?= ['pending'=>'Menunggu','in_progress'=>'Diproses','ready'=>'Siap'][($o['status'])] ?? $o['status'] ?></span>
+                                <span class="badge badge-<?= $o['status'] ?>"><?= ['pending'=>'Menunggu','washing'=>'Dicuci 🧼','drying'=>'Kering 💨','ironing'=>'Setrika 🔥','ready_pickup'=>'Siap Diambil','ready_deliver'=>'Siap Diantar','done'=>'Selesai','cancelled'=>'Dibatalkan'][($o['status'])] ?? $o['status'] ?></span>
                             </div>
                             <div style="display:flex;justify-content:space-between;align-items:center;">
                                 <div style="font-size:20px;font-weight:800;font-family:'Sora',sans-serif;color:var(--gray-800);"><?= formatRupiah($o['amount']) ?></div>

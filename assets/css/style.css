@@ -91,14 +91,21 @@ input, select, textarea { font-family: var(--font); }
 .badge::before { content:''; width:6px; height:6px; border-radius:50%; }
 .badge-pending { background:#FEF3C7; color:#92400E; }
 .badge-pending::before { background:#F59E0B; }
-.badge-in_progress { background:var(--primary-bg); color:#1D4ED8; }
-.badge-in_progress::before { background:var(--primary); }
-.badge-ready { background:var(--green-light); color:#166534; }
-.badge-ready::before { background:var(--green); }
-.badge-delivered { background:var(--gray-100); color:var(--gray-600); }
-.badge-delivered::before { background:var(--gray-400); }
-.badge-cancelled { background:#FEE2E2; color:#991B1B; }
+.badge-washing       { background:#DBEAFE; color:#1E40AF; }
+.badge-washing::before { background:var(--primary); }
+.badge-drying        { background:var(--teal-light); color:#0E7490; }
+.badge-drying::before { background:var(--teal); }
+.badge-ironing       { background:var(--orange-light); color:#C2410C; }
+.badge-ironing::before { background:var(--orange); }
+.badge-ready_pickup  { background:var(--green-light); color:#166534; }
+.badge-ready_pickup::before { background:var(--green); }
+.badge-ready_deliver { background:var(--teal-light); color:#0E7490; }
+.badge-ready_deliver::before { background:var(--teal); }
+.badge-done          { background:#D1FAE5; color:#065F46; }
+.badge-done::before  { background:#059669; }
+.badge-cancelled     { background:#FEE2E2; color:#991B1B; }
 .badge-cancelled::before { background:#EF4444; }
+.badge-cod           { background:var(--orange-light); color:#C2410C; }
 .badge-paid { background:var(--green-light); color:#166534; }
 .badge-unpaid { background:#FEE2E2; color:#991B1B; }
 
@@ -546,3 +553,11 @@ tbody tr:last-child td { border-bottom: none; }
     .service-grid, .staff-grid { grid-template-columns: 1fr; }
     .metric-row { grid-template-columns: 1fr 1fr; }
 }
+
+/* Badge status lama (kompatibilitas data DB lama) */
+.badge-in_progress  { background:#DBEAFE; color:#1E40AF; }
+.badge-in_progress::before { background:var(--primary); }
+.badge-ready        { background:var(--green-light); color:#166534; }
+.badge-ready::before { background:var(--green); }
+.badge-delivered    { background:#D1FAE5; color:#065F46; }
+.badge-delivered::before { background:#059669; }

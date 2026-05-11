@@ -1,6 +1,6 @@
 <?php
 require_once '../includes/auth.php';
-requireAdminOrStaff('../pages/login.php');
+requireAdmin('../pages/login.php');
 $db = getDB();
 $user = getCurrentUser();
 
@@ -8,6 +8,24 @@ $msg = ''; $msgType = '';
 
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     $action = $_POST['action'] ?? '';
+
+    // Konfirmasi pembayaran oleh admin (Cash/COD)
+    if ($action === 'confirm_pay') {
+        $oid = (int)$_POST['order_id'];
+        $o   = $db->query("SELECT o.*, u.name as cname FROM orders o JOIN users u ON o.user_id=u.id WHERE o.id=$oid")->fetch_assoc();
+        if ($o && $o['payment_status'] === 'unpaid') {
+            $db->query("UPDATE orders SET payment_status='paid' WHERE id=$oid");
+            $trxCode = 'ADM-' . strtoupper(substr(md5(uniqid()), 0, 8));
+            $pmeth   = $db->real_escape_string($o['payment_method'] ?: 'cash');
+            $db->query("INSERT INTO transactions (order_id,transaction_code,amount,payment_method,status) VALUES ($oid,'$trxCode',{$o['amount']},'$pmeth','success')");
+            $ocode  = $db->real_escape_string($o['order_code']);
+            $cuid   = (int)$o['user_id'];
+            $amtFmt = $db->real_escape_string(formatRupiah($o['amount']));
+            $db->query("INSERT INTO notifications (user_id,title,message) VALUES ($cuid,'💰 Pembayaran Dikonfirmasi!','Pembayaran pesanan <b>$ocode</b> sebesar <b>$amtFmt</b> telah dikonfirmasi oleh admin. Status Anda kini LUNAS ✅')");
+        }
+        header('Location: orders.php?confirmed=1');
+        exit;
+    }
 
     if ($action === 'add') {
         $uid = (int)$_POST['user_id'];
@@ -27,22 +45,36 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     }
 
     if ($action === 'update_status') {
-        $oid = (int)$_POST['order_id'];
-        $status = $_POST['status'];
-        $db->query("UPDATE orders SET status='$status' WHERE id=$oid");
+        $oid         = (int)$_POST['order_id'];
+        $status      = $_POST['status'];
+        $driverName  = $db->real_escape_string(trim($_POST['driver_name']  ?? ''));
+        $driverPhone = $db->real_escape_string(trim($_POST['driver_phone'] ?? ''));
 
-        // Notif ke customer saat status berubah jadi 'ready' atau 'delivered'
+        $driverSet = '';
+        if ($driverName)  $driverSet .= ", driver_name='$driverName'";
+        if ($driverPhone) $driverSet .= ", driver_phone='$driverPhone'";
+
+        $db->query("UPDATE orders SET status='$status'$driverSet WHERE id=$oid");
+
+        // Notifikasi ke customer berdasarkan status baru
         $order = $db->query("SELECT o.*,u.id as cust_id,u.name as cust_name FROM orders o JOIN users u ON o.user_id=u.id WHERE o.id=$oid")->fetch_assoc();
         if ($order) {
-            $cid = (int)$order['cust_id'];
+            $cid   = (int)$order['cust_id'];
             $ocode = $db->real_escape_string($order['order_code']);
             $cname = $db->real_escape_string($order['cust_name']);
-            if ($status === 'ready') {
-                $db->query("INSERT INTO notifications (user_id,title,message) VALUES ($cid,'✅ Pakaian Siap Diambil!','Halo $cname! Pesanan <b>$ocode</b> Anda sudah selesai dicuci dan siap diambil. Silakan datang ke laundry kami. Terima kasih! 🧺')");
-            } elseif ($status === 'delivered') {
-                $db->query("INSERT INTO notifications (user_id,title,message) VALUES ($cid,'🚚 Pesanan Telah Diantar!','Halo $cname! Pesanan <b>$ocode</b> Anda telah berhasil diantarkan. Terima kasih telah mempercayai WashWell! 😊')");
-            } elseif ($status === 'in_progress') {
-                $db->query("INSERT INTO notifications (user_id,title,message) VALUES ($cid,'🧼 Pakaian Sedang Dicuci','Halo $cname! Pesanan <b>$ocode</b> Anda sedang dalam proses pencucian. Kami akan memberi tahu jika sudah selesai.')");
+            $notifs = [
+                'washing'       => ['🧼 Pakaian Sedang Dicuci',     "Halo $cname! Pesanan <b>$ocode</b> Anda sedang dalam proses pencucian."],
+                'drying'        => ['💨 Pakaian Sedang Dikeringkan', "Halo $cname! Pesanan <b>$ocode</b> Anda sedang dikeringkan."],
+                'ironing'       => ['🔥 Pakaian Sedang Disetrika',   "Halo $cname! Pesanan <b>$ocode</b> Anda sedang disetrika/gosok."],
+                'ready_pickup'  => ['✅ Pakaian Siap Diambil!',      "Halo $cname! Pesanan <b>$ocode</b> sudah siap. Silakan datang ke laundry kami. 🧺"],
+                'ready_deliver' => ['🚚 Pakaian Siap Diantar!',      "Halo $cname! Pesanan <b>$ocode</b> sedang dalam perjalanan ke alamat Anda."],
+                'done'          => ['🎉 Pesanan Selesai!',           "Halo $cname! Pesanan <b>$ocode</b> telah selesai. Terima kasih mempercayai WashWell! 😊"],
+            ];
+            if (isset($notifs[$status])) {
+                [$title, $message] = $notifs[$status];
+                $title   = $db->real_escape_string($title);
+                $message = $db->real_escape_string($message);
+                $db->query("INSERT INTO notifications (user_id,title,message) VALUES ($cid,'$title','$message')");
             }
         }
         $msg='Status berhasil diperbarui!'; $msgType='success';
@@ -56,13 +88,15 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 }
 
 // Filters
-$statusFilter = $_GET['status'] ?? '';
-$search = trim($_GET['search'] ?? '');
-$dateFilter = trim($_GET['date'] ?? '');
+$statusFilter  = $_GET['status']  ?? '';
+$payFilter     = $_GET['payment'] ?? '';
+$search        = trim($_GET['search'] ?? '');
+$dateFilter    = trim($_GET['date']   ?? '');
 $where = ['1=1'];
 if ($statusFilter) $where[] = "o.status='".addslashes($statusFilter)."'";
-if ($search) $where[] = "(o.order_code LIKE '%".addslashes($search)."%' OR u.name LIKE '%".addslashes($search)."%')";
-if ($dateFilter) $where[] = "(o.delivery_date='".addslashes($dateFilter)."' OR o.pickup_date='".addslashes($dateFilter)."')";
+if ($payFilter)    $where[] = "o.payment_status='".addslashes($payFilter)."'";
+if ($search)       $where[] = "(o.order_code LIKE '%".addslashes($search)."%' OR u.name LIKE '%".addslashes($search)."%')";
+if ($dateFilter)   $where[] = "(o.delivery_date='".addslashes($dateFilter)."' OR o.pickup_date='".addslashes($dateFilter)."')";
 $whereStr = implode(' AND ', $where);
 
 // Pagination
@@ -77,15 +111,18 @@ $orders = $db->query("SELECT o.*,u.name as customer_name,u.phone as customer_pho
 $customers = $db->query("SELECT id,name FROM users WHERE role='customer' ORDER BY name");
 $services = $db->query("SELECT id,name,price_per_kg FROM services WHERE is_active=1 ORDER BY name");
 
-// === JADWAL PENGANTARAN (hari ini & 7 hari ke depan) ===
+// === JADWAL PENGANTARAN ===
+$isJadwalFull = isset($_GET['jadwal']);
+$jadwalDays   = $isJadwalFull ? 30 : 7;
+
 $deliverySchedule = $db->query("
     SELECT o.*, u.name as customer_name, u.phone as customer_phone, u.address as customer_address, s.name as service_name
     FROM orders o
     JOIN users u ON o.user_id=u.id
     JOIN services s ON o.service_id=s.id
     WHERE o.delivery_date >= CURDATE()
-      AND o.delivery_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-      AND o.status NOT IN ('delivered','cancelled')
+      AND o.delivery_date <= DATE_ADD(CURDATE(), INTERVAL $jadwalDays DAY)
+      AND o.status NOT IN ('done','cancelled')
     ORDER BY o.delivery_date ASC, o.id ASC
 ");
 
@@ -98,8 +135,28 @@ while ($row = $deliverySchedule->fetch_assoc()) {
 // Waktu estimasi antar (slot per jam berdasarkan urutan)
 $timeSlots = ['08:00','09:30','11:00','13:00','14:30','16:00','17:30'];
 
-$statusLabels = ['pending'=>'Pending','in_progress'=>'Diproses','ready'=>'Siap','delivered'=>'Terkirim','cancelled'=>'Dibatalkan'];
-$finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombol update disembunyikan
+$statusLabels = [
+    'pending'       => 'Menunggu',
+    'washing'       => 'Sedang Dicuci',
+    'drying'        => 'Pengeringan',
+    'ironing'       => 'Setrika',
+    'ready_pickup'  => 'Siap Diambil',
+    'ready_deliver' => 'Siap Diantar',
+    'done'          => 'Selesai',
+    'cancelled'     => 'Dibatalkan',
+    // Status lama (kompatibilitas)
+    'in_progress'   => 'Dalam Proses',
+    'ready'         => 'Siap',
+    'delivered'     => 'Terkirim',
+];
+$finalStatuses = ['ready_pickup','ready_deliver','done','cancelled'];
+// Status lama yang BUKAN final (masih bisa diupdate)
+$legacyNonFinal = ['in_progress','ready','delivered','washing','drying','ironing','pending'];
+
+// Summary pembayaran
+$totalUnpaid    = $db->query("SELECT COUNT(*) as c FROM orders WHERE payment_status='unpaid' AND status NOT IN ('cancelled','done')")->fetch_assoc()['c'];
+$totalPaid      = $db->query("SELECT COUNT(*) as c FROM orders WHERE payment_status='paid'")->fetch_assoc()['c'];
+$nominalUnpaid  = $db->query("SELECT COALESCE(SUM(amount),0) as s FROM orders WHERE payment_status='unpaid' AND status NOT IN ('cancelled','done')")->fetch_assoc()['s'];
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -122,9 +179,10 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
                 <div class="topbar-title">Manajemen Pesanan</div>
             </div>
             <div class="topbar-right">
-                <button class="notif-btn">
+                <a href="notifications.php" class="notif-btn" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;background:var(--gray-100);">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                </button>
+                    <?php $adminNotifCount = getUnreadNotifs($user['id']); if ($adminNotifCount > 0): ?><span style="position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:#EF4444;border:2px solid white;"></span><?php endif; ?>
+                </a>
                 <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;background:var(--gray-100)">
                     <div class="avatar avatar-sm"><?= strtoupper(substr($user['name'],0,1)) ?></div>
                     <span style="font-size:13px;font-weight:600"><?= htmlspecialchars(explode(' ',$user['name'])[0]) ?></span>
@@ -156,11 +214,15 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
                         </div>
                         <div>
-                            <div style="font-weight:800;font-size:15px;color:#1E40AF;">Jadwal Pengantaran</div>
-                            <div style="font-size:12px;color:#3B82F6;">7 hari ke depan · <?= array_sum(array_map('count',$scheduleByDate)) ?> pesanan akan diantar</div>
+                            <div style="font-weight:800;font-size:15px;color:#1E40AF;">Jadwal Pengantaran<?= $isJadwalFull ? ' — 30 Hari' : '' ?></div>
+                            <div style="font-size:12px;color:#3B82F6;"><?= $isJadwalFull ? '30' : '7' ?> hari ke depan · <?= array_sum(array_map('count',$scheduleByDate)) ?> pesanan akan diantar</div>
                         </div>
                     </div>
-                    <a href="?tab=jadwal" style="font-size:12px;color:#3B82F6;font-weight:600;">Lihat semua →</a>
+                    <?php if ($isJadwalFull): ?>
+                    <a href="orders.php" style="font-size:12px;color:#3B82F6;font-weight:600;">← Tampilkan 7 hari</a>
+                    <?php else: ?>
+                    <a href="orders.php?jadwal=1" style="font-size:12px;color:#3B82F6;font-weight:600;">Lihat semua →</a>
+                    <?php endif; ?>
                 </div>
                 <div class="card-body" style="padding:16px;background:transparent;">
                     <div style="display:flex;flex-direction:column;gap:14px;">
@@ -184,13 +246,15 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
                         <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px;">
                         <?php foreach ($items as $idx => $item): ?>
                         <?php
-                            // Cek apakah di notes ada "ANTAR KE:"
-                            $isDelivery = strpos($item['notes'] ?? '', '[ANTAR KE:') !== false;
-                            $deliveryAddr = '';
-                            if ($isDelivery) {
+                            // Gunakan kolom delivery_type (dari Sesi 1) dengan fallback ke notes lama
+                            $isDelivery = ($item['delivery_type'] ?? '') === 'delivery'
+                                          || strpos($item['notes'] ?? '', '[ANTAR KE:') !== false;
+                            $deliveryAddr = $item['delivery_address'] ?? '';
+                            if (!$deliveryAddr && strpos($item['notes'] ?? '', '[ANTAR KE:') !== false) {
                                 preg_match('/\[ANTAR KE: ([^\]]+)\]/', $item['notes'], $m);
                                 $deliveryAddr = $m[1] ?? $item['customer_address'] ?? '-';
                             }
+                            if (!$deliveryAddr) $deliveryAddr = $item['customer_address'] ?? '';
                             $timeSlot = $timeSlots[$idx % count($timeSlots)];
                         ?>
                         <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1.5px solid <?= $isDelivery?'#BFDBFE':'#D1FAE5' ?>;border-radius:10px;background:<?= $isDelivery?'#EFF6FF':'#F0FDF4' ?>;">
@@ -216,8 +280,10 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
                                 <?php if ($item['customer_phone']): ?>
                                 <div style="font-size:11px;color:var(--gray-400);margin-top:2px;">📞 <?= htmlspecialchars($item['customer_phone']) ?></div>
                                 <?php endif; ?>
-                            </div>
-                            <!-- Status + Quick Update -->
+                                <?php if (!empty($item['driver_name'])): ?>
+                                <div style="font-size:11px;color:var(--teal);margin-top:2px;">🚗 Driver: <?= htmlspecialchars($item['driver_name']) ?><?= !empty($item['driver_phone']) ? ' · '.htmlspecialchars($item['driver_phone']) : '' ?></div>
+                                <?php endif; ?>
+                            </div><!-- end info div -->
                             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
                                 <span class="badge badge-<?= $item['status'] ?>"><?= $statusLabels[$item['status']] ?? $item['status'] ?></span>
                                 <?php if (!in_array($item['status'], $finalStatuses)): ?>
@@ -228,7 +294,7 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
                                 <span style="font-size:10px;color:var(--gray-400);font-style:italic;">Selesai</span>
                                 <?php endif; ?>
                             </div>
-                        </div>
+                        </div><!-- end row div -->
                         <?php endforeach; ?>
                         </div>
                     </div>
@@ -246,21 +312,47 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
             </div>
             <?php endif; ?>
 
+            <!-- PAYMENT SUMMARY CARDS -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+                <div style="background:#FEE2E2;border:1.5px solid #FECACA;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px;">
+                    <div style="width:40px;height:40px;background:#EF4444;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:#991B1B;font-weight:600;margin-bottom:2px;">Belum Bayar</div>
+                        <div style="font-family:'Sora',sans-serif;font-size:18px;font-weight:800;color:#991B1B;"><?= $totalUnpaid ?> pesanan</div>
+                        <div style="font-size:11px;color:#B91C1C;"><?= formatRupiah($nominalUnpaid) ?></div>
+                    </div>
+                </div>
+                <div style="background:var(--green-light);border:1.5px solid #86EFAC;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px;">
+                    <div style="width:40px;height:40px;background:var(--green);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:#166534;font-weight:600;margin-bottom:2px;">Sudah Lunas</div>
+                        <div style="font-family:'Sora',sans-serif;font-size:18px;font-weight:800;color:#166534;"><?= $totalPaid ?> pesanan</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- FILTER STATUS TABS -->
             <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
                 <?php
                 $tabs = [
-                    ['' ,'Semua', $db->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c']],
-                    ['pending','Pending', $db->query("SELECT COUNT(*) as c FROM orders WHERE status='pending'")->fetch_assoc()['c']],
-                    ['in_progress','Diproses', $db->query("SELECT COUNT(*) as c FROM orders WHERE status='in_progress'")->fetch_assoc()['c']],
-                    ['ready','Siap', $db->query("SELECT COUNT(*) as c FROM orders WHERE status='ready'")->fetch_assoc()['c']],
-                    ['delivered','Terkirim', $db->query("SELECT COUNT(*) as c FROM orders WHERE status='delivered'")->fetch_assoc()['c']],
-                    ['cancelled','Dibatalkan', $db->query("SELECT COUNT(*) as c FROM orders WHERE status='cancelled'")->fetch_assoc()['c']],
+                    ['' ,          'Semua',        $db->query("SELECT COUNT(*) as c FROM orders")->fetch_assoc()['c']],
+                    ['pending',    'Menunggu',      $db->query("SELECT COUNT(*) as c FROM orders WHERE status='pending'")->fetch_assoc()['c']],
+                    ['washing',    'Dicuci',        $db->query("SELECT COUNT(*) as c FROM orders WHERE status='washing'")->fetch_assoc()['c']],
+                    ['drying',     'Pengeringan',   $db->query("SELECT COUNT(*) as c FROM orders WHERE status='drying'")->fetch_assoc()['c']],
+                    ['ironing',    'Setrika',       $db->query("SELECT COUNT(*) as c FROM orders WHERE status='ironing'")->fetch_assoc()['c']],
+                    ['ready_pickup','Siap Diambil', $db->query("SELECT COUNT(*) as c FROM orders WHERE status='ready_pickup'")->fetch_assoc()['c']],
+                    ['ready_deliver','Siap Diantar',$db->query("SELECT COUNT(*) as c FROM orders WHERE status='ready_deliver'")->fetch_assoc()['c']],
+                    ['done',       'Selesai',       $db->query("SELECT COUNT(*) as c FROM orders WHERE status='done'")->fetch_assoc()['c']],
+                    ['cancelled',  'Dibatalkan',    $db->query("SELECT COUNT(*) as c FROM orders WHERE status='cancelled'")->fetch_assoc()['c']],
                 ];
                 foreach ($tabs as [$s,$l,$c]):
                     $active = $statusFilter===$s;
                 ?>
-                <a href="?status=<?= $s ?>&search=<?= urlencode($search) ?>" class="btn <?= $active?'btn-primary':'btn-ghost' ?> btn-sm">
+                <a href="?status=<?= $s ?>&search=<?= urlencode($search) ?>&payment=<?= urlencode($payFilter) ?>" class="btn <?= $active?'btn-primary':'btn-ghost' ?> btn-sm">
                     <?= $l ?> <span style="background:<?= $active?'rgba(255,255,255,0.25)':'var(--gray-200)' ?>;border-radius:10px;padding:0 6px;font-size:11px;font-weight:700;"><?= $c ?></span>
                 </a>
                 <?php endforeach; ?>
@@ -269,15 +361,20 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
             <div class="card">
                 <div class="card-header">
                     <span class="card-title">Daftar Semua Pesanan</span>
-                    <form method="GET" style="display:flex;gap:8px;align-items:center;">
+                    <form method="GET" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                         <input type="hidden" name="status" value="<?= $statusFilter ?>">
                         <div style="position:relative">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--gray-400)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                             <input type="text" name="search" placeholder="Cari pesanan / pelanggan..." value="<?= htmlspecialchars($search) ?>" style="padding:8px 14px 8px 34px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:13px;font-family:var(--font);outline:none;width:220px;">
                         </div>
                         <input type="date" name="date" value="<?= htmlspecialchars($dateFilter) ?>" style="padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:13px;font-family:var(--font);outline:none;" title="Filter tanggal">
+                        <select name="payment" class="form-control form-select" style="width:160px;font-size:13px;" onchange="this.form.submit()">
+                            <option value="">Semua Pembayaran</option>
+                            <option value="unpaid" <?= $payFilter==='unpaid'?'selected':'' ?>>⏳ Belum Bayar</option>
+                            <option value="paid"   <?= $payFilter==='paid'  ?'selected':'' ?>>✅ Sudah Lunas</option>
+                        </select>
                         <button type="submit" class="btn btn-ghost btn-sm">Cari</button>
-                        <?php if ($search || $dateFilter): ?>
+                        <?php if ($search || $dateFilter || $payFilter): ?>
                         <a href="?status=<?= $statusFilter ?>" class="btn btn-ghost btn-sm" style="color:#EF4444;">✕ Reset</a>
                         <?php endif; ?>
                     </form>
@@ -301,6 +398,8 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
                             <?php if ($orders && $orders->num_rows > 0): ?>
                                 <?php while ($o = $orders->fetch_assoc()):
                                     $isFinal = in_array($o['status'], $finalStatuses);
+                                    // Status lama delivered = final (sudah selesai diantar)
+                                    if ($o['status'] === 'delivered') $isFinal = true;
                                     $isDelivery = strpos($o['notes'] ?? '', '[ANTAR KE:') !== false;
                                 ?>
                                 <tr style="<?= $isFinal ? 'opacity:0.65;' : '' ?>">
@@ -318,12 +417,17 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
                                                 <?php if ($o['customer_phone']): ?>
                                                 <div style="font-size:11px;color:var(--gray-400);"><?= htmlspecialchars($o['customer_phone']) ?></div>
                                                 <?php endif; ?>
+                                                <?php if (!empty($o['driver_name'])): ?>
+                                                <div style="font-size:11px;color:var(--teal);margin-top:2px;">🚗 <?= htmlspecialchars($o['driver_name']) ?><?= !empty($o['driver_phone']) ? ' · '.htmlspecialchars($o['driver_phone']) : '' ?></div>
+                                                <?php endif; ?>
                                             </div>
                                         </div>
                                     </td>
                                     <td>
                                         <?= htmlspecialchars($o['service_name']) ?>
-                                        <div style="font-size:11px;color:var(--gray-400);"><?= $o['weight'] ?> kg</div>
+                                        <div style="display:inline-flex;align-items:center;gap:4px;background:var(--primary-bg);padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;color:var(--primary);margin-top:3px;">
+                                            <?= number_format((float)$o['weight'], 1) ?> kg
+                                        </div>
                                     </td>
                                     <td><span class="badge badge-<?= $o['status'] ?>"><?= $statusLabels[$o['status']] ?? $o['status'] ?></span></td>
                                     <td style="font-size:12.5px;">
@@ -345,8 +449,26 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
                                             <?php else: ?>
                                             <!-- Status final: badge saja, tombol update disembunyikan -->
                                             <span style="font-size:11px;color:var(--gray-400);font-style:italic;white-space:nowrap;">
-                                                <?= $o['status']==='delivered'?'✅ Selesai':'❌ Batal' ?>
+                                                <?php
+                                                $finalLabels = [
+                                                    'ready_pickup'  => '✅ Siap Diambil',
+                                                    'ready_deliver' => '🚚 Siap Diantar',
+                                                    'done'          => '🎉 Selesai',
+                                                    'cancelled'     => '❌ Dibatalkan',
+                                                ];
+                                                echo $finalLabels[$o['status']] ?? 'Final';
+                                                ?>
                                             </span>
+                                            <?php endif; ?>
+                                            <?php if ($o['payment_status'] === 'unpaid' && $o['status'] !== 'cancelled'): ?>
+                                            <form method="POST" onsubmit="return confirm('Konfirmasi pembayaran pesanan <?= $o['order_code'] ?>?')" style="display:inline">
+                                                <input type="hidden" name="action" value="confirm_pay">
+                                                <input type="hidden" name="order_id" value="<?= $o['id'] ?>">
+                                                <button type="submit" class="btn btn-sm" style="background:var(--green);color:white;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+                                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                                    Lunas
+                                                </button>
+                                            </form>
                                             <?php endif; ?>
                                             <form method="POST" onsubmit="return confirm('Hapus pesanan <?= $o['order_code'] ?>?')" style="display:inline">
                                                 <input type="hidden" name="action" value="delete">
@@ -468,16 +590,19 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
                     <div style="display:flex;flex-direction:column;gap:8px;" id="statusOptions">
                         <?php
                         $statusOpts = [
-                            'pending'     => ['🕐', 'Pending', 'Menunggu konfirmasi', 'var(--gray-200)', 'var(--gray-700)'],
-                            'in_progress' => ['🧼', 'Sedang Diproses', 'Pakaian sedang dicuci', '#FEF3C7', '#92400E'],
-                            'ready'       => ['✅', 'Siap Diambil', 'Pakaian siap, info ke customer', '#D1FAE5', '#065F46'],
-                            'delivered'   => ['🚚', 'Terkirim / Selesai', 'Pesanan selesai — tidak dapat diubah lagi', '#DBEAFE', '#1E40AF'],
-                            'cancelled'   => ['❌', 'Dibatalkan', 'Batalkan pesanan — tidak dapat diubah lagi', '#FEE2E2', '#991B1B'],
+                            'pending'       => ['🕐','Menunggu',       'Menunggu konfirmasi',                              'var(--gray-100)','var(--gray-700)'],
+                            'washing'       => ['🧼','Sedang Dicuci',  'Pakaian sedang dalam proses cuci',                '#DBEAFE','#1E40AF'],
+                            'drying'        => ['💨','Pengeringan',    'Pakaian sedang dikeringkan',                       'var(--teal-light)','#0E7490'],
+                            'ironing'       => ['🔥','Setrika/Gosok',  'Pakaian sedang disetrika',                         'var(--orange-light)','#C2410C'],
+                            'ready_pickup'  => ['✅','Siap Diambil',   'Customer bisa datang mengambil — status final',    'var(--green-light)','#166534'],
+                            'ready_deliver' => ['🚚','Siap Diantar',   'Pakaian siap dikirim ke alamat customer — final', 'var(--teal-light)','#0E7490'],
+                            'done'          => ['🎉','Selesai',        'Pesanan selesai — tidak dapat diubah lagi',        '#D1FAE5','#065F46'],
+                            'cancelled'     => ['❌','Dibatalkan',     'Batalkan pesanan — tidak dapat diubah lagi',       '#FEE2E2','#991B1B'],
                         ];
                         foreach ($statusOpts as $val => [$icon,$label,$desc,$bg,$color]):
                         ?>
                         <label style="cursor:pointer;">
-                            <input type="radio" name="status" value="<?= $val ?>" style="display:none;" class="status-radio">
+                            <input type="radio" name="status" value="<?= $val ?>" style="display:none;" class="status-radio" onchange="checkFinalWarning(this.value)">
                             <div class="status-opt-inner" data-val="<?= $val ?>" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:2px solid var(--gray-200);border-radius:10px;transition:all 0.2s;">
                                 <span style="font-size:20px;"><?= $icon ?></span>
                                 <div style="flex:1;">
@@ -490,11 +615,24 @@ $finalStatuses = ['delivered','cancelled']; // status yang sudah final — tombo
                     </div>
                 </div>
 
+                <!-- Field Driver — muncul hanya saat status = ready_deliver -->
+                <div id="driverFields" style="display:none;background:var(--teal-light);border:1.5px solid #A5F3FC;border-radius:10px;padding:14px;margin-top:10px;">
+                    <div style="font-size:12px;font-weight:700;color:#0E7490;margin-bottom:10px;">🚚 Info Driver Pengantaran</div>
+                    <div class="form-group" style="margin-bottom:10px;">
+                        <label class="form-label" style="font-size:12px;">Nama Driver</label>
+                        <input type="text" name="driver_name" class="form-control" placeholder="Contoh: Budi Santoso" style="font-size:13px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label" style="font-size:12px;">No. HP Driver</label>
+                        <input type="text" name="driver_phone" class="form-control" placeholder="Contoh: 0812xxxx" style="font-size:13px;">
+                    </div>
+                </div>
+
                 <!-- Warning untuk status final -->
                 <div id="finalWarning" style="display:none;background:#FEF3C7;border:1.5px solid #FCD34D;border-radius:10px;padding:12px;font-size:12px;color:#92400E;margin-top:8px;">
                     ⚠️ <strong>Perhatian!</strong> Status ini bersifat final. Setelah disimpan, tombol Update tidak akan muncul lagi untuk pesanan ini.
                 </div>
-            </div>
+            </div><!-- end modal-body -->
             <div class="modal-footer">
                 <button type="button" class="btn btn-ghost" onclick="document.getElementById('updateModal').classList.remove('open')">Batal</button>
                 <button type="submit" class="btn btn-primary" id="updateSaveBtn">Simpan Status</button>
@@ -520,6 +658,10 @@ function openUpdate(id, status, customerName, orderCode) {
     document.getElementById('updateOrderCode').textContent = orderCode;
     document.getElementById('updateCustomerName').textContent = '👤 ' + customerName;
 
+    // Reset driver fields
+    document.querySelector('input[name="driver_name"]').value = '';
+    document.querySelector('input[name="driver_phone"]').value = '';
+
     // Set current status as checked
     document.querySelectorAll('.status-radio').forEach(r => {
         r.checked = (r.value === status);
@@ -531,8 +673,10 @@ function openUpdate(id, status, customerName, orderCode) {
 }
 
 function checkFinalWarning(val) {
-    const isFinal = (val === 'delivered' || val === 'cancelled');
-    document.getElementById('finalWarning').style.display = isFinal ? 'block' : 'none';
+    const finalList = ['ready_pickup','ready_deliver','done','cancelled'];
+    const isFinal   = finalList.includes(val);
+    document.getElementById('finalWarning').style.display  = isFinal   ? 'block' : 'none';
+    document.getElementById('driverFields').style.display  = (val === 'ready_deliver') ? 'block' : 'none';
 }
 
 document.querySelectorAll('.status-radio').forEach(r => {

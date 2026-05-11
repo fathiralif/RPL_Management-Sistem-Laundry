@@ -1,6 +1,6 @@
 <?php
 require_once '../includes/auth.php';
-requireAdminOrStaff('../pages/login.php');
+requireAdmin('../pages/login.php');
 $db = getDB();
 $user = getCurrentUser();
 
@@ -148,7 +148,7 @@ $serviceIcons = [
                     </div>
                     <div class="service-card-name"><?= htmlspecialchars($s['name']) ?></div>
                     <div class="service-card-desc"><?= htmlspecialchars($s['description'] ?: 'Layanan laundry profesional WashWell.') ?></div>
-                    <div class="service-card-price"><?= formatRupiah($s['price_per_kg']) ?><span>/kg</span></div>
+                    <div class="service-card-price"><?= formatRupiah($s['price_per_kg']) ?><span>/<?= ($s['unit_type'] ?? 'kg') === 'item' ? 'pcs' : 'kg' ?></span></div>
                     <div class="service-card-meta">
                         <span class="service-tag <?= $s['is_active']?'service-tag-active':'service-tag-inactive' ?>">
                             <?= $s['is_active']?'✅ Aktif':'❌ Nonaktif' ?>

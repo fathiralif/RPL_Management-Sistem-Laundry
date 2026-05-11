@@ -11,33 +11,33 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $name = trim($_POST['name']);
         $email = trim($_POST['email']);
         $phone = trim($_POST['phone'] ?? '');
-        $role = $_POST['role'] === 'admin' ? 'admin' : 'staff';
+        $role = 'admin';
         $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
         $stmt = $db->prepare("INSERT INTO users (name,email,password,phone,role) VALUES (?,?,?,?,?)");
         $stmt->bind_param('sssss',$name,$email,$password,$phone,$role);
-        if ($stmt->execute()) { $msg='Staff berhasil ditambahkan!'; $msgType='success'; }
+        if ($stmt->execute()) { $msg='Admin berhasil ditambahkan!'; $msgType='success'; }
         else { $msg='Gagal: Email mungkin sudah terdaftar.'; $msgType='danger'; }
     }
     if ($action === 'edit') {
         $id = (int)$_POST['id'];
         $name = addslashes(trim($_POST['name']));
         $phone = addslashes(trim($_POST['phone'] ?? ''));
-        $db->query("UPDATE users SET name='$name',phone='$phone' WHERE id=$id AND role IN ('staff','admin')");
-        $msg='Data staff diperbarui!'; $msgType='success';
+        $db->query("UPDATE users SET name='$name',phone='$phone' WHERE id=$id AND role='admin'");
+        $msg='Data admin diperbarui!'; $msgType='success';
     }
     if ($action === 'delete') {
         $id = (int)$_POST['id'];
         if ($id !== $user['id']) {
-            $db->query("DELETE FROM users WHERE id=$id AND role IN ('staff','admin')");
-            $msg='Staff dihapus.'; $msgType='success';
+            $db->query("DELETE FROM users WHERE id=$id AND role='admin'");
+            $msg='Admin dihapus.'; $msgType='success';
         } else {
             $msg='Tidak bisa menghapus akun sendiri.'; $msgType='danger';
         }
     }
 }
 
-$staffList = $db->query("SELECT u.*, (SELECT COUNT(*) FROM orders o WHERE o.staff_id=u.id) as handled_orders FROM users u WHERE u.role IN ('staff','admin') ORDER BY u.role DESC, u.created_at ASC");
-$totalStaff = $db->query("SELECT COUNT(*) as c FROM users WHERE role='staff'")->fetch_assoc()['c'];
+$staffList = $db->query("SELECT u.*, (SELECT COUNT(*) FROM orders o WHERE o.user_id=u.id) as handled_orders FROM users u WHERE u.role='admin' ORDER BY u.created_at ASC");
+$totalStaff = 0;
 $totalAdmin = $db->query("SELECT COUNT(*) as c FROM users WHERE role='admin'")->fetch_assoc()['c'];
 $avatarColors = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2'];
 ?>
@@ -46,7 +46,7 @@ $avatarColors = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2'];
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Staff - WashWell Admin</title>
+<title>Manajemen Admin - WashWell</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/css/style.css">
 </head>
@@ -59,7 +59,7 @@ $avatarColors = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2'];
                 <button class="hamburger" onclick="openSidebar()">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
                 </button>
-                <div class="topbar-title">Manajemen Staff</div>
+                <div class="topbar-title">Manajemen Admin</div>
             </div>
             <div class="topbar-right">
                 <button class="notif-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></button>
@@ -77,7 +77,7 @@ $avatarColors = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2'];
             <!-- HERO -->
             <div class="page-hero animate-in" style="background:linear-gradient(135deg,#D97706 0%,#B45309 50%,#92400E 100%)">
                 <img src="../assets/img/bubble-deco.svg" class="page-hero-img" alt="">
-                <div class="page-hero-title">🏷️ Tim & Staff</div>
+                <div class="page-hero-title">👑 Manajemen Admin</div>
                 <div class="page-hero-sub">Kelola tim admin dan staff operasional WashWell</div>
             </div>
 
@@ -89,7 +89,7 @@ $avatarColors = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2'];
                     </div>
                     <div>
                         <div style="font-family:var(--font-display);font-size:20px;font-weight:800;color:#D97706"><?= $totalStaff ?></div>
-                        <div style="font-size:12px;color:var(--gray-500)">Staff Aktif</div>
+                        <div style="font-size:12px;color:var(--gray-500)">Total Admin</div>
                     </div>
                 </div>
                 <div class="card" style="padding:16px 20px;display:flex;align-items:center;gap:12px;flex:1;min-width:140px;">
@@ -103,7 +103,7 @@ $avatarColors = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2'];
                 </div>
                 <button class="btn btn-primary" onclick="document.getElementById('addModal').classList.add('open')" style="align-self:center;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Tambah Staff
+                    Tambah Admin
                 </button>
             </div>
 
@@ -115,8 +115,8 @@ $avatarColors = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2'];
                         <?= strtoupper(substr($s['name'],0,1)) ?>
                     </div>
                     <div class="staff-name"><?= htmlspecialchars($s['name']) ?></div>
-                    <div class="staff-role-badge <?= $s['role']==='admin'?'staff-role-admin':'staff-role-staff' ?>">
-                        <?= $s['role']==='admin'?'👑 Admin':'🔧 Staff' ?>
+                    <div class="staff-role-badge staff-role-admin">
+                        👑 Admin
                     </div>
                     <div class="staff-info-row">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -160,7 +160,7 @@ $avatarColors = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2'];
 <div class="modal-overlay" id="addModal">
     <div class="modal">
         <div class="modal-header">
-            <div class="modal-title">Tambah Staff Baru</div>
+            <div class="modal-title">Tambah Admin Baru</div>
             <button class="modal-close" onclick="document.getElementById('addModal').classList.remove('open')">✕</button>
         </div>
         <form method="POST">
@@ -170,13 +170,7 @@ $avatarColors = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2'];
                 <div class="form-group"><label class="form-label">Email</label><input type="email" name="email" class="form-control" required></div>
                 <div class="form-group"><label class="form-label">Password</label><input type="password" name="password" class="form-control" required minlength="6"></div>
                 <div class="form-group"><label class="form-label">No. HP</label><input type="text" name="phone" class="form-control" placeholder="08xxxxxxxxxx"></div>
-                <div class="form-group">
-                    <label class="form-label">Role</label>
-                    <select name="role" class="form-control form-select">
-                        <option value="staff">Staff</option>
-                        <option value="admin">Admin</option>
-                    </select>
-                </div>
+                <input type="hidden" name="role" value="admin">
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-ghost" onclick="document.getElementById('addModal').classList.remove('open')">Batal</button>
