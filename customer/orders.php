@@ -34,7 +34,32 @@ $pages = ceil($total/$perPage);
 
 $orders = $db->query("SELECT o.*,s.name as service_name,s.price_per_kg FROM orders o JOIN services s ON o.service_id=s.id WHERE $whereStr ORDER BY o.created_at DESC LIMIT $perPage OFFSET $offset");
 $notifCount = getUnreadNotifs($uid);
-$statusLabels = ['pending'=>'Menunggu','in_progress'=>'Diproses','ready'=>'Siap Diambil','delivered'=>'Terkirim','cancelled'=>'Dibatalkan'];
+$statusLabels = [
+    // Status baru (digunakan untuk pesanan baru)
+    'pending'       => 'Menunggu',
+    'washing'       => 'Sedang Dicuci 🧼',
+    'drying'        => 'Pengeringan 💨',
+    'ironing'       => 'Setrika 🔥',
+    'ready_pickup'  => 'Siap Diambil ✅',
+    'ready_deliver' => 'Siap Diantar 🚚',
+    'done'          => 'Selesai 🎉',
+    'cancelled'     => 'Dibatalkan ❌',
+    // Status lama (hanya untuk tampilan data lama di DB, tidak tampil di filter)
+    'in_progress'   => 'Dalam Proses',
+    'ready'         => 'Siap',
+    'delivered'     => 'Selesai Diantar',
+];
+// Status yang tampil di dropdown filter (hanya status baru)
+$filterStatusLabels = [
+    'pending'       => 'Menunggu',
+    'washing'       => 'Sedang Dicuci 🧼',
+    'drying'        => 'Pengeringan 💨',
+    'ironing'       => 'Setrika 🔥',
+    'ready_pickup'  => 'Siap Diambil ✅',
+    'ready_deliver' => 'Siap Diantar 🚚',
+    'done'          => 'Selesai 🎉',
+    'cancelled'     => 'Dibatalkan ❌',
+];
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -81,7 +106,7 @@ $statusLabels = ['pending'=>'Menunggu','in_progress'=>'Diproses','ready'=>'Siap 
                         </div>
                         <select name="status" class="form-control form-select" style="width:170px;">
                             <option value="">Semua Status</option>
-                            <?php foreach($statusLabels as $k=>$v): ?>
+                            <?php foreach($filterStatusLabels as $k=>$v): ?>
                             <option value="<?= $k ?>" <?= $statusFilter===$k?'selected':'' ?>><?= $v ?></option>
                             <?php endforeach; ?>
                         </select>
@@ -120,21 +145,52 @@ $statusLabels = ['pending'=>'Menunggu','in_progress'=>'Diproses','ready'=>'Siap 
                         </tr>
                     </thead>
                     <tbody>
-                    <?php while($o = $orders->fetch_assoc()): ?>
-                    <tr>
+                    <?php while($o = $orders->fetch_assoc()):
+                        $orderJson = json_encode([
+                            'code'           => $o['order_code'],
+                            'service'        => $o['service_name'],
+                            'weight'         => number_format((float)$o['weight'], 1),
+                            'amount'         => formatRupiah($o['amount']),
+                            'payment'        => $o['payment_method'],
+                            'payment_status' => $o['payment_status'],
+                            'created'        => date('d/m/Y', strtotime($o['created_at'])),
+                            'delivery'       => $o['delivery_date'] ? date('d/m/Y', strtotime($o['delivery_date'])) : '-',
+                            'status'         => $o['status'],
+                        ], JSON_HEX_APOS | JSON_HEX_QUOT);
+                    ?>
+                    <tr data-oid="<?= $o['id'] ?>" data-order='<?= $orderJson ?>'>
                         <td>
                             <span style="font-weight:700;color:var(--primary)"><?= htmlspecialchars($o['order_code']) ?></span><br>
                             <small style="color:var(--gray-400)"><?= date('d M Y', strtotime($o['created_at'])) ?></small>
                         </td>
-                        <td><?= htmlspecialchars($o['service_name']) ?></td>
+                        <td>
+                            <?= htmlspecialchars($o['service_name']) ?>
+                            <div style="display:inline-flex;align-items:center;gap:4px;background:var(--primary-bg);padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;color:var(--primary);margin-top:3px;">
+                                <?= number_format((float)$o['weight'], 1) ?> kg
+                            </div>
+                        </td>
                         <td>
                             <span style="font-size:13px;"><?= $o['weight'] ?> kg</span><br>
                             <small style="color:var(--gray-500)"><?= ucfirst($o['payment_method']) ?></small>
                         </td>
                         <td><?= $o['pickup_date'] ? date('d M Y', strtotime($o['pickup_date'])) : '-' ?></td>
                         <td><?= $o['delivery_date'] ? date('d M Y', strtotime($o['delivery_date'])) : '-' ?></td>
-                        <td><span class="badge badge-<?= $o['status'] ?>"><?= $statusLabels[$o['status']] ?></span></td>
-                        <td><span class="badge badge-<?= $o['payment_status'] ?>"><?= $o['payment_status']==='paid'?'Lunas':'Belum Bayar' ?></span></td>
+                        <td><span class="badge badge-<?= $o['status'] ?>"><?= $statusLabels[$o['status']] ?? $o['status'] ?></span></td>
+                        <td>
+                            <?php if ($o['payment_status'] === 'paid'): ?>
+                            <span style="display:inline-flex;align-items:center;gap:5px;background:var(--green-light);color:#166534;border:1.5px solid #86EFAC;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;">
+                                ✅ LUNAS
+                            </span>
+                            <?php elseif ($o['payment_method'] === 'cod'): ?>
+                            <span style="display:inline-flex;align-items:center;gap:5px;background:var(--orange-light);color:#C2410C;border:1.5px solid #FED7AA;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;">
+                                🚗 COD
+                            </span>
+                            <?php else: ?>
+                            <span style="display:inline-flex;align-items:center;gap:5px;background:#FEE2E2;color:#991B1B;border:1.5px solid #FECACA;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;">
+                                ⏳ BELUM BAYAR
+                            </span>
+                            <?php endif; ?>
+                        </td>
                         <td style="font-weight:700;"><?= formatRupiah($o['amount']) ?></td>
                         <td>
                             <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -146,8 +202,13 @@ $statusLabels = ['pending'=>'Menunggu','in_progress'=>'Diproses','ready'=>'Siap 
                                     <button type="submit" class="btn btn-danger btn-sm">Batal</button>
                                 </form>
                                 <?php endif; ?>
-                                <?php if($o['payment_status']==='unpaid' && $o['status']!=='cancelled'): ?>
+                                <?php if($o['payment_status']==='unpaid' && $o['payment_method']!=='cod' && $o['status']!=='cancelled'): ?>
                                 <a href="payments.php?order_id=<?= $o['id'] ?>" class="btn btn-orange btn-sm">Bayar</a>
+                                <?php endif; ?>
+                                <?php if($o['payment_status']==='paid' || $o['status']==='done'): ?>
+                                <button onclick="openResi(<?= $o['id'] ?>)" class="btn btn-ghost btn-sm" style="font-size:11.5px;">
+                                    🧾 Resi
+                                </button>
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -169,9 +230,113 @@ $statusLabels = ['pending'=>'Menunggu','in_progress'=>'Diproses','ready'=>'Siap 
         </main>
     </div>
 </div>
+<!-- ===== MODAL RESI PEMBAYARAN ===== -->
+<div class="modal-overlay" id="resiModal">
+    <div class="modal" style="max-width:480px;">
+        <div class="modal-header">
+            <div class="modal-title" style="font-family:'Sora',sans-serif;">🧾 Resi Pembayaran</div>
+            <button class="modal-close" onclick="document.getElementById('resiModal').classList.remove('open')">✕</button>
+        </div>
+        <div class="modal-body" id="resiBody"></div>
+        <div class="modal-footer">
+            <button onclick="document.getElementById('resiModal').classList.remove('open')" class="btn btn-ghost">Tutup</button>
+            <button onclick="printResi()" class="btn btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Cetak Resi
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
 function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sidebarOverlay').classList.add('open');}
 function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('open');}
+
+const payLabels = {
+    'cash'    : '💵 Cash',
+    'transfer': '🏦 Transfer Bank',
+    'e-wallet': '📱 E-Wallet',
+    'cod'     : '🚗 COD – Bayar saat diantar',
+};
+
+function openResi(orderId) {
+    const row   = document.querySelector('tr[data-oid="' + orderId + '"]');
+    if (!row) return;
+    const order = JSON.parse(row.dataset.order);
+    const isPaid = order.payment_status === 'paid';
+
+    document.getElementById('resiBody').innerHTML = `
+    <div style="border:2px dashed var(--gray-200);border-radius:12px;padding:20px;margin-bottom:16px;" id="resiContent">
+        <!-- Header -->
+        <div style="text-align:center;margin-bottom:16px;padding-bottom:14px;border-bottom:1px dashed var(--gray-200);">
+            <div style="font-family:'Sora',sans-serif;font-size:22px;font-weight:800;color:var(--primary);">WashWell</div>
+            <div style="font-size:11px;color:var(--gray-400);margin-top:2px;">Laundry Management System</div>
+        </div>
+        <!-- Kode pesanan -->
+        <div style="text-align:center;background:var(--gray-50);border-radius:8px;padding:12px;margin-bottom:14px;">
+            <div style="font-size:10px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:1px;">Nomor Pesanan</div>
+            <div style="font-family:'Sora',sans-serif;font-size:24px;font-weight:800;color:var(--primary);letter-spacing:1px;">${order.code}</div>
+        </div>
+        <!-- Detail -->
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+                <span style="color:var(--gray-500);">Tanggal Pesanan</span>
+                <span style="font-weight:600;">${order.created}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+                <span style="color:var(--gray-500);">Est. Selesai</span>
+                <span style="font-weight:600;">${order.delivery}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+                <span style="color:var(--gray-500);">Layanan</span>
+                <span style="font-weight:600;">${order.service}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+                <span style="color:var(--gray-500);">Total Berat</span>
+                <span style="font-weight:600;">${order.weight} kg</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+                <span style="color:var(--gray-500);">Metode Bayar</span>
+                <span style="font-weight:600;">${payLabels[order.payment] ?? order.payment}</span>
+            </div>
+        </div>
+        <!-- Total -->
+        <div style="background:var(--primary-bg);border-radius:8px;padding:14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <span style="font-size:14px;font-weight:700;color:var(--primary);">Total Tagihan</span>
+            <span style="font-family:'Sora',sans-serif;font-size:22px;font-weight:800;color:var(--primary);">${order.amount}</span>
+        </div>
+        <!-- Status bayar -->
+        <div style="text-align:center;">
+            ${isPaid
+                ? '<span style="background:var(--green-light);color:#166534;padding:6px 24px;border-radius:20px;font-size:13px;font-weight:700;">✅ LUNAS</span>'
+                : '<span style="background:#FEE2E2;color:#991B1B;padding:6px 24px;border-radius:20px;font-size:13px;font-weight:700;">⏳ BELUM LUNAS</span>'
+            }
+        </div>
+    </div>
+    <div style="font-size:11px;color:var(--gray-400);text-align:center;">Terima kasih telah mempercayai WashWell 🧺</div>`;
+
+    document.getElementById('resiModal').classList.add('open');
+}
+
+function printResi() {
+    const content = document.getElementById('resiContent').outerHTML;
+    const w = window.open('', '_blank', 'width=500,height=750');
+    w.document.write(`<!DOCTYPE html><html><head><title>Resi WashWell</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Sora:wght@700;800&display=swap" rel="stylesheet">
+    <style>
+        :root{--primary:#2563EB;--primary-bg:#EFF6FF;--green-light:#DCFCE7;--gray-50:#F8FAFC;--gray-200:#E2E8F0;--gray-400:#94A3B8;--gray-500:#64748B;}
+        body{font-family:'Plus Jakarta Sans',sans-serif;padding:24px;font-size:13px;color:#1E293B;max-width:420px;margin:auto;}
+        @media print{body{padding:0;}}
+    </style></head><body>${content}
+    <p style="text-align:center;font-size:11px;color:#94A3B8;margin-top:12px;">Terima kasih telah mempercayai WashWell 🧺</p>
+    <script>window.onload=function(){window.print();}<\/script>
+    </body></html>`);
+    w.document.close();
+}
+
+document.querySelectorAll('.modal-overlay').forEach(o => {
+    o.addEventListener('click', function(e){ if(e.target===this) this.classList.remove('open'); });
+});
 </script>
 </body>
 </html>

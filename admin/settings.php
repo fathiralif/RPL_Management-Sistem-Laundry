@@ -1,6 +1,6 @@
 <?php
 require_once '../includes/auth.php';
-requireAdminOrStaff('../pages/login.php');
+requireAdmin('../pages/login.php');
 $db = getDB();
 $user = getCurrentUser();
 
@@ -119,8 +119,8 @@ $activeTab = $_GET['tab'] ?? 'profile';
                                     <div>
                                         <div style="font-family:var(--font-display);font-weight:700;font-size:15px"><?= htmlspecialchars($user['name']) ?></div>
                                         <div style="font-size:12.5px;color:var(--gray-500);margin-top:2px"><?= htmlspecialchars($user['email']) ?></div>
-                                        <span class="staff-role-badge <?= $user['role']==='admin'?'staff-role-admin':'staff-role-staff' ?>" style="margin-top:6px;display:inline-block">
-                                            <?= $user['role']==='admin'?'👑 Admin':'🔧 Staff' ?>
+                                        <span class="staff-role-badge staff-role-admin" style="margin-top:6px;display:inline-block">
+                                            👑 Admin
                                         </span>
                                     </div>
                                 </div>

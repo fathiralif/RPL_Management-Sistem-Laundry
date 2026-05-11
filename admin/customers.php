@@ -1,6 +1,6 @@
 <?php
 require_once '../includes/auth.php';
-requireAdminOrStaff('../pages/login.php');
+requireAdmin('../pages/login.php');
 $db = getDB();
 $user = getCurrentUser();
 

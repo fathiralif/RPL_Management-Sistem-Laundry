@@ -12,8 +12,9 @@ $navItems = [
     ['page'=>'services','icon'=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M21 12h-2M17.66 17.66l-1.41-1.41M12 19v2M6.34 17.66l1.41-1.41M3 12H1M4.93 4.93l1.41 1.41M12 3V1"/></svg>','label'=>'Layanan','url'=>'services.php'],
 ];
 if ($currentUser['role'] === 'admin') {
-    $navItems[] = ['page'=>'staff','icon'=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>','label'=>'Staff','url'=>'staff.php'];
+    $navItems[] = ['page'=>'staff','icon'=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>','label'=>'Manajemen Admin','url'=>'staff.php'];
 }
+$navItems[] = ['page'=>'notifications','icon'=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>','label'=>'Notifikasi','url'=>'notifications.php','badge'=>true];
 $navItems[] = ['page'=>'settings','icon'=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M21 12h-2M17.66 17.66l-1.41-1.41M12 19v2M6.34 17.66l1.41-1.41M3 12H1M4.93 4.93l1.41 1.41M12 3V1"/></svg>','label'=>'Pengaturan','url'=>'settings.php'];
 
 $initials = strtoupper(substr($currentUser['name'],0,1));
@@ -36,6 +37,8 @@ $initials = strtoupper(substr($currentUser['name'],0,1));
             <?= $item['icon'] ?>
             <?= $item['label'] ?>
             <?php if ($item['page']==='orders' && $notifCount > 0): ?>
+            <span class="nav-badge"><?= $notifCount ?></span>
+            <?php elseif (($item['badge'] ?? false) && $notifCount > 0): ?>
             <span class="nav-badge"><?= $notifCount ?></span>
             <?php endif; ?>
         </a>
